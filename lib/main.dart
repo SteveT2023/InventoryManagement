@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   runApp(MyApp());
 }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -25,18 +27,55 @@ class InventoryMgmt extends StatefulWidget {
 }
 
 class _InventoryMgmtState extends State<InventoryMgmt> {
-  final List<String> inventoryItems = [
-    'Item 1',
-    'Item 2',
-    'Item 3'
-  ];
   final TextEditingController itemController = TextEditingController();
 
-  void addItem(String item) {
-    setState(() {
-      inventoryItems.add(item);
-    });
+  void addItem(String item) async {
+    await FirebaseFirestore.instance.collection('Items').add({'name': item});
     itemController.clear();
+  }
+
+  void updateItem(String id, String newItem) async {
+    await FirebaseFirestore.instance.collection('Items').doc(id).update({'name': newItem});
+  }
+
+  void deleteItem(String id) async {
+    await FirebaseFirestore.instance.collection('Items').doc(id).delete();
+  }
+
+  void updateDialog(String id, String currentItem) {
+    final TextEditingController updateController = TextEditingController();
+    updateController.text = currentItem;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Update Item'),
+          content: TextField(
+            controller: updateController,
+            decoration: InputDecoration(
+              labelText: 'Enter New Item',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                updateItem(id, updateController.text);
+                Navigator.of(context).pop();
+              },
+              child: Text('Update'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -56,7 +95,7 @@ class _InventoryMgmtState extends State<InventoryMgmt> {
                   child: TextField(
                     controller: itemController,
                     decoration: InputDecoration(
-                      labelText: 'Enter item name',
+                      labelText: 'Enter Item name',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -64,9 +103,7 @@ class _InventoryMgmtState extends State<InventoryMgmt> {
                 SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () {
-                    if (itemController.text.isNotEmpty) {
-                      addItem(itemController.text);
-                    }
+                    addItem(itemController.text);
                   },
                   child: Text('Add'),
                 ),
@@ -74,11 +111,28 @@ class _InventoryMgmtState extends State<InventoryMgmt> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: inventoryItems.length,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  title: Text(inventoryItems[index]),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('Items').snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                final items = snapshot.data!.docs;
+                return ListView.builder(
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final id = item.id;
+                    final name = item['name'];
+                    return ListTile(
+                      title: Text(name),
+                      onTap: () => updateDialog(id, name),
+                      trailing: IconButton(
+                        icon: Icon(Icons.delete),
+                        onPressed: () => deleteItem(id),
+                      ),
+                    );
+                  },
                 );
               },
             ),
